@@ -58,7 +58,7 @@ List skill 目录 → Read SKILL.md → Read README → git log
 
 **无论如何 Step 1 都要做。** 它便宜、确定性高、能给 Step 2 提供线索。
 
-### Step 1：确定性资源优先（List + Read，永远从这里开始）
+### Step 1：第一层 —— 确定性资源（List + Read，永远从这里开始）
 
 ```
 1. List skill 目录       → 看有哪些文件
@@ -69,11 +69,27 @@ List skill 目录 → Read SKILL.md → Read README → git log
 6. Read references/ 下相关文件 → 拿引用链上游
 ```
 
-**关键判断**：如果 Step 1-4 已经把形成链路讲清楚了，**停**。多余的会话解析是 token 黑洞。
+**完成后不要自己决定"够不够"。** 把第一层结果简要汇报给用户：
 
-### Step 2：会话搜索（只在 Step 1 不够时）
+> "我从文件和 git 中找到了这些形成节点：[列表]。但 [某个上游/某个决策原因] 在文件里没写。你觉得够了吗？要不要继续挖第二层（会话）？"
 
-#### 2a. 先判断会话在哪个 Agent 里
+**为什么必须问这一句**：
+- 用户比 AI 更清楚自己的创作过程发生在哪
+- 有些 Skill 文件层已完整，直接输出即可
+- 有些 Skill 的上游在会话里，不挖就会断裂
+- **如果被 skill-content-distributor 调用，这一步尤其关键——content-distributor 需要完整链路才能写出有根基的文章，tracer 自己判断"够了"可能导致文章"很水"**
+
+### Step 2：第二层 —— 会话搜索（只在用户同意后）
+
+#### 2a. 先问用户定向
+
+不要自己猜会话在哪，**问一句**：
+
+> "你记得最早的讨论发生在哪？Alice / Claude Code / WorkBuddy / 某个私有仓库？给我一两个关键词或文件名，我定向搜。"
+
+**拿到方向后再搜**，不要漫无目的地 conversation_search / Grep。
+
+#### 2b. 判断会话在哪个 Agent 里
 
 | Agent | 会话存哪 | 用什么工具搜 | 何时可用 |
 |-------|---------|-------------|---------|
@@ -82,7 +98,7 @@ List skill 目录 → Read SKILL.md → Read README → git log
 | Alice | Alice 项目内文件 | List + Read（同 Step 1） | 通常不需要会话搜索，文件里就有 |
 | 其他 Agent | 不确定 | 先问用户会话存在哪 | —— |
 
-#### 2b. WorkBuddy 会话搜索（conversation_search）
+#### 2c. WorkBuddy 会话搜索（conversation_search）
 
 ```
 触发条件：用户在 WorkBuddy 里聊过这个 skill 的设计
@@ -90,7 +106,7 @@ List skill 目录 → Read SKILL.md → Read README → git log
 limit：先 5-10 条，不够再加
 ```
 
-#### 2c. Claude Code 会话搜索（Grep + Python）
+#### 2d. Claude Code 会话搜索（Grep + Python）
 
 ```bash
 # 第 1 步：定位命中文件（一次搞定，不要多轮试 pattern）
@@ -143,14 +159,21 @@ Grep pattern="skill名|核心关键词" path="~/.claude/projects" output_mode="c
 **Before**：接到"找真相源"→ 立刻 conversation_search 或 Grep → 方向可能完全错 → 前 10 步全空
 **After**：先 List skill 目录 → Read SKILL.md → Read README → git log → 这 4 步通常拿 70% 信息，零失败
 
-### 3. Python 解析 JSONL 的半权威性
+### 3. 第一层完成后自己决定"够了"是最常见的断裂
+
+**Before**：文件 + git 拿到 v1.0→v3.5 迭代链路 → 自己判断"够了" → 直接输出 → 但最初为什么做这个、框架从哪来的，全缺 → 下游（content-distributor）拿到的链路断了 → 写出来的文章"很水"
+**After**：第一层完成后，把结果摘要给用户，明确说"文件里没找到 X" → 问"够了吗？要不要挖会话层？" → 用户说"最初跟 Alice 有关" → 定向搜 conversation_search → 找到 article-v8.html 起源 → 链路完整
+
+**核心教训**：tracer 不应该替用户判断"够不够"。用户知道自己的创作过程跨了哪些环境，AI 不知道。
+
+### 4. Python 解析 JSONL 的半权威性
 
 从 .jsonl 提取的会话原文**是事实**，但从原文里推断出的元数据（commit 数、时间、hash）**不是事实**——除非你单独跑了 git log 验证。
 
 **Before**：从 assistant 消息文本推断"10 次提交，5/30 起源"→ 画进图 → 碰巧对了但没验证
 **After**：会话只提取对话原文，元数据一律跑 `git log` 单独验证，图里标 `[git log]` 而非 `[会话原文]`
 
-### 4. 多 Agent 形成链路
+### 5. 多 Agent 形成链路
 
 一个 skill 的形成可能分散在多个 Agent 里：
 - Alice 里讨论设计原则
@@ -159,15 +182,15 @@ Grep pattern="skill名|核心关键词" path="~/.claude/projects" output_mode="c
 
 **每个 Agent 用对应工具扒**，不要指望一个工具搜全。先问用户（或从 SKILL.md 的致谢/changelog 里推断）形成过程跨了哪些 Agent。
 
-### 5. 截断会丢上下文
+### 6. 截断会丢上下文
 
 Python 提取会话消息时，如果每条只取前 500 字符，长消息的关键决策上下文会被砍掉。**要么读全文，要么标注"已截断"**。
 
-### 6. line 号不可引用
+### 7. line 号不可引用
 
 JSONL 的 line 号会因 `/compact` 操作变化。引用会话内容时用**时间戳 + 消息前 50 字**做锚点，不要用 line 号。
 
-### 7. 会话内容含敏感信息
+### 8. 会话内容含敏感信息
 
 `~/.claude/projects/*.jsonl` 和 conversation_search 结果里可能有 API key、私人对话、密码、内部链接。
 
@@ -180,6 +203,7 @@ JSONL 的 line 号会因 `/compact` 操作变化。引用会话内容时用**时
 |--------|---------|---------|
 | 上来 conversation_search | 可能方向完全错（数据不在索引） | 先 List + Read 确定性资源 |
 | 同一 pattern 搜 3 次 | 空结果换 query 还是空 | 第一次空就换工具 |
+| 第一层后自己判断"够了" | 链路断裂，下游文章"很水" | 汇报给用户，问要不要挖第二层 |
 | Python 脚本分多轮提取 | 每轮都付解析成本 | 一次脚本提取 user + assistant 全部 |
 | 只读 .jsonl 不跑 git log | 元数据不在会话里 | 会话 + git 交叉验证 |
 
@@ -209,3 +233,8 @@ JSONL 的 line 号会因 `/compact` 操作变化。引用会话内容时用**时
 - 发布 skill 到 GitHub → 用 skill-publisher
 
 这个 skill 只管"还原形成链路 + 定位真相源"，不管 skill 本身的好坏。
+
+## 联动
+
+- **skill-content-distributor**：content-distributor 的 Phase 0 强制调用本 Skill 做文件层溯源。被调用时，tracer 的"停下来问用户"行为尤其重要——content-distributor 需要完整链路才能写出有根基的文章，tracer 自己判断"够了"可能导致文章断裂。
+- **skill-publisher**：发布前可调用本 Skill 确认形成链路完整性。
